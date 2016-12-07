@@ -20,9 +20,148 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
  *     be graded. 
  */
 char transpose_submit_desc[] = "Transpose submission";
+
+
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+  /*
+   we will navigate three cases in this function: 
+   1) square matrix of size 32 
+   2) square matrix of size 64
+   3) when matrix is anything else (for example: 61*67)
+   */
+
+int Bsize; //variable for size of block, used in each of the iterations, N ==32, N ==63 and the else 
+int blockForRow, blockForCol; //to iterate over blocks, user in outer loops
+int r, c; //to iterate through each block, used in inner loops
+int temp = 0, d = 0; //d stands for diagonal, temp is just a temporary variable
+int v0,v1,v2,v3,v4; //Variables to be used in the N==64 case for various assignments within it
+	/*
+	Using Bsize = 8 in this case. Only N == 32 is used in the condition since matrix transpose can
+	occur for any a*b and c*a where only a needs to be same and b and c can vary.
+	Blocking is used here. 
+	4 levels of loop sare used here. 2 outer loops iterate accross blocks (in column major iteration) while the 2 inner loops iterate through each block. 
+	*/
+	if (N == 32)
+	{
+		Bsize = 8;
+		for(blockForCol = 0; blockForCol < N; blockForCol += 8)
+		{
+			for(blockForRow = 0; blockForRow < N; blockForRow += 8)
+			{
+				for(r = blockForRow; r < blockForRow + 8; r++)
+				{
+					for(c = blockForCol; c < blockForCol + 8; c++)
+					{
+						//Row and column are not equal
+						if(r != c)
+						{
+							B[c][r] = A[r][c];
+						}
+						
+						else 
+						{
+						//Store in temp instead of missing in B[j][i] to decrease misses
+						temp = A[r][c];
+						d = r;
+						}
+					}
+					//We don't move elements on diagonals since we are transposing a square matrix
+					if (blockForRow == blockForCol)	
+					{
+						B[d][d] = temp;
+					}
+				}
+			}
+		}
+	}
+
+	/* Using Bsize = 4 here. 
+	2 levels of loops are used 
+	We assign elements in each row individually. Causes reduced missess. */
+	else if (N == 64)
+	{	
+ 		Bsize = 4;
+		for(r = 0; r < N; r += Bsize)
+		{
+			for(c = 0; c < M; c += Bsize)
+			{
+				/*Elements in A[r][], A[r+1][], A[r+2][] are assigned to the variables for use throughout this loop
+				This is becuase we are only allowed to modify the second matrix B but not the matrix A */
+				v0 = A[r][c];
+				v1 = A[r+1][c];
+				v2 = A[r+2][c];
+				v3 = A[r+2][c+1];
+				v4 = A[r+2][c+2];
+				//Elements in B[c+3][] are assigned
+				B[c+3][r] = A[r][c+3];
+				B[c+3][r+1] = A[r+1][c+3];
+				B[c+3][r+2] = A[r+2][c+3];
+				//Elements in B[c+2][] are assigned 
+				B[c+2][r] = A[r][c+2];
+				B[c+2][r+1] = A[r+1][c+2];
+				B[c+2][r+2] = v4;
+				v4 = A[r+1][c+1];
+				//Elements in B[c+1][] are assigned
+				B[c+1][r] = A[r][c+1];
+				B[c+1][r+1] = v4;
+				B[c+1][r+2] = v3;
+				//Elements in B[c][] are assigned
+				B[c][r] = v0;
+				B[c][r+1] = v1;
+				B[c][r+2] = v2;
+				//Elements in row A[r+3][] are assigned to the left out elements in B (where B has r+3)
+				B[c][r+3] = A[r+3][c];
+				B[c+1][r+3] = A[r+3][c+1];
+				B[c+2][r+3] = A[r+3][c+2];
+				v0 = A[r+3][c+3];
+				//Finally, elements in row B[c+3][] are assigned
+				B[c+3][r+3] = v0;
+			}
+		}
+	}
+
+	/* This is the case for a random matrix size. We use Bsize = 16 
+	2 levels of loops are used to iterate over blocks in column major iteration and 2 levels are used to go through the blocks	*/
+	else 
+	{
+		Bsize = 16;
+		
+		for (blockForCol = 0; blockForCol < M; blockForCol += Bsize)
+		{
+			for (blockForRow = 0; blockForRow < N; blockForRow += Bsize)
+			{	
+				/*Since our sizes can be odd, not all blocks will be square. Special case: if (blockForRow + 16 > N), we get an invalid access. 
+				We also do regular check for i<N and j<M */
+				for(r = blockForRow; (r < N) && (r < blockForRow + Bsize); r++)
+				{
+					for(c = blockForCol; (c < M) && (c < blockForCol + Bsize); c++)
+					{
+						//row and column are not same
+						if (r != c)
+						{
+							B[c][r] = A[r][c];
+						}
+						
+						//row and column same 
+						else
+						{
+							temp = A[r][c];
+							d = r;
+						}
+					}
+					
+					//Row and column number are same in the blocks, diagonal element assigned
+					if(blockForRow == blockForCol) 
+					{
+						B[d][d] = temp;
+					}
+				}
+			}
+		}
+	}
 }
+
 
 /* 
  * You can define additional transpose functions below. We've defined
